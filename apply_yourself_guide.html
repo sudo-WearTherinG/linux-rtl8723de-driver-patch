@@ -548,21 +548,20 @@ kernel versions.
 <h2>7. Build and Install</h2>
 
 <p>
-After completing the modifications, return to the project
-directory and use the provided installation script.
+From inside your modified kernel source directory (e.g., <code>linux-rtw-fix</code>), compile the two driver modules against your running kernel headers and copy them into <code>updates/</code>.
 </p>
 
-<h3>Make the installer executable</h3>
+<h3>Compile the patched modules</h3>
 
-<pre><code>chmod +x install.sh</code></pre>
+<pre><code>make -C /usr/lib/modules/$(uname -r)/build M=$(pwd)/drivers/bluetooth modules
+make -C /usr/lib/modules/$(uname -r)/build M=$(pwd)/drivers/net/wireless/realtek/rtw88 modules</code></pre>
 
-<h3>Extract the Zip</h3>
+<h3>Install to updates/ and refresh module map</h3>
 
-<pre><code>unzip src.zip</code></pre>
-
-<h3>Run the installer</h3>
-
-<pre><code>./install.sh</code></pre>
+<pre><code>sudo mkdir -p /usr/lib/modules/$(uname -r)/updates
+sudo cp drivers/bluetooth/{btusb,btrtl,btmtk,btintel,btbcm}.ko /usr/lib/modules/$(uname -r)/updates/
+sudo cp drivers/net/wireless/realtek/rtw88/rtw88_pci.ko /usr/lib/modules/$(uname -r)/updates/
+sudo depmod -a</code></pre>
 
 <p>
 Once installation completes, perform a complete shutdown
@@ -586,7 +585,10 @@ To remove the patched modules and return to the stock
 kernel modules:
 </p>
 
-<pre><code>./install.sh --uninstall</code></pre>
+<pre><code>for mod in btusb btrtl btmtk btintel btbcm rtw88_pci; do
+    sudo rm -f "/usr/lib/modules/$(uname -r)/updates/${mod}.ko"
+done
+sudo depmod -a</code></pre>
 </section>
 
 <footer>
