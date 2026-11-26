@@ -9,8 +9,8 @@ The **Realtek RTL8723DE** M.2 combo adapter integrates two distinct host bus int
 | **Wi-Fi (802.11b/g/n)** | PCIe | `10ec:d723` | `rtw88_8723de` (`rtw88_pci`) |
 | **Bluetooth (4.2)** | USB | `0bda:b009` | `btusb` + `btrtl` |
 
-* **Tested Platform:** HP Laptop (`15-da0xxx`), Arch-based Omarchy Linux (`7.2.15-4-omarchy`)
-* **Firmware Versions:** Wi-Fi `48.0.0` (`H2C version 0`), Bluetooth `rtl8723d_fw.bin` (`0x828a96f1`)
+- **Tested Platform:** HP Laptop (`15-da0xxx`), Arch-based Omarchy Linux (`7.2.15-4-omarchy`)
+- **Firmware Versions:** Wi-Fi `48.0.0` (`H2C version 0`), Bluetooth `rtl8723d_fw.bin` (`0x828a96f1`)
 
 ---
 
@@ -23,80 +23,93 @@ When performing a warm reboot (`reboot` / `systemctl reboot`) from a cold boot w
 #### Kernel Log Evidence (`dmesg` / `journalctl -k`)
 
 1. **USB Bluetooth fails enumeration first (`-71` / `EPROTO`):**
+
    ```text
    usb 1-6: new full-speed USB device number 3 using xhci_hcd
    usb 1-6: device descriptor read/64, error -71
    usb 1-6: Device not responding to setup address.
    usb 1-6: device not accepting address 5, error -71
-Use code with caution.
-1. PCIe Wi-Fi fails MAC power-on immediately afterward (-16 / -EBUSY):text
-rtw88_8723de 0000:02:00.0: Firmware version 48.0.0, H2C version 0
-rtw88_8723de 0000:02:00.0: failed to poll offset=0x5 mask=0x1 value=0x0
-rtw88_8723de 0000:02:00.0: mac power on failed
-rtw88_8723de 0000:02:00.0: failed to power on mac
-rtw88_8723de 0000:02:00.0: failed to setup chip efuse info
-rtw88_8723de 0000:02:00.0: probe with driver rtw88_8723de failed with error -16
-Use code with caution.
+   ```
 
-	• offset=0x5 (mask=0x1) corresponds to BIT_APFM_ONMAC in REG_APS_FSMCO + 1 (the shared Auto Power-On MAC state machine). Because the shared silicon power domain was not cleanly reset prior to the warm reset, polling for 0x0 times out and returns -EBUSY (-16).
+2. **PCIe Wi-Fi fails MAC power-on immediately afterward (-16 / -EBUSY):**
 
-Issue B: 2.4 GHz Single-Antenna Coexistence Throughput Collapse (Firmware/Hardware Limit)
+   ```text
+   rtw88_8723de 0000:02:00.0: Firmware version 48.0.0, H2C version 0
+   rtw88_8723de 0000:02:00.0: failed to poll offset=0x5 mask=0x1 value=0x0
+   rtw88_8723de 0000:02:00.0: mac power on failed
+   rtw88_8723de 0000:02:00.0: failed to power on mac
+   rtw88_8723de 0000:02:00.0: failed to setup chip efuse info
+   rtw88_8723de 0000:02:00.0: probe with driver rtw88_8723de failed with error -16
+   ```
+
+   - offset=0x5 (mask=0x1) corresponds to BIT_APFM_ONMAC in REG_APS_FSMCO + 1 (the shared Auto Power-On MAC state machine). Because the shared silicon power domain was not cleanly reset prior to the warm reset, polling for 0x0 times out and returns -EBUSY (-16).
+
+### Issue B: 2.4 GHz Single-Antenna Coexistence Throughput Collapse (Firmware/Hardware Limit)
 
 When streaming A2DP Bluetooth audio over internal Bluetooth (0bda:b009) while connected to 2.4 GHz Wi-Fi (rtw88_8723de):
-• Wi-Fi RX bitrates collapse to 1–2 MBit/s (CCK_1M) and dmesg logs:text
-rtw88_8723de 0000:02:00.0: failed to get tx report from firmware
-Use code with caution.
-• Root cause: The RTL8723DE is a 1x1 single-antenna chip. Time-division multiplexing (TDMA) arbitration between Bluetooth SCO/A2DP slots and 2.4 GHz Wi-Fi frames is executed inside Realtek's closed-source firmware (rtw8723d_fw.bin), starving Wi-Fi RX/TX windows during continuous audio streaming.
-• Workaround: Disabling internal Realtek Bluetooth (0bda:b009) and offloading Bluetooth audio to an external USB Bluetooth adapter eliminates single-antenna 2.4 GHz airtime contention completely.
 
-3. Empirical Reboot State Matrix (Unpatched Kernel 7.2.15)
+- Wi-Fi RX bitrates collapse to 1–2 MBit/s (CCK_1M) and dmesg logs:
+
+  ```text
+  rtw88_8723de 0000:02:00.0: failed to get tx report from firmware
+  ```
+
+- Root cause: The RTL8723DE is a 1x1 single-antenna chip. Time-division multiplexing (TDMA) arbitration between Bluetooth SCO/A2DP slots and 2.4 GHz Wi-Fi frames is executed inside Realtek's closed-source firmware (rtw8723d_fw.bin), starving Wi-Fi RX/TX windows during continuous audio streaming.
+- Workaround: Disabling internal Realtek Bluetooth (0bda:b009) and offloading Bluetooth audio to an external USB Bluetooth adapter eliminates single-antenna 2.4 GHz airtime contention completely.
+
+---
+
+## 3. Empirical Reboot State Matrix (Unpatched Kernel 7.2.15)
 
 Controlled testing across cold boots and consecutive warm reboots established the exact trigger condition:
 
-Initial State Before Reboot	Warm Reboot #1	Warm Reboot #2 (from broken state)
-Cold boot → BT ON, Wi-Fi ON
-	FAIL (both vanish)	PASS (both recover)
-Cold boot → BT ON, Wi-Fi OFF
-	FAIL (both vanish)	PASS (both recover)
-Cold boot → BT OFF, Wi-Fi ON
-	PASS	PASS
-Cold boot → BT OFF, Wi-Fi OFF
-	PASS	PASS
+| Initial State Before Reboot | Warm Reboot #1 | Warm Reboot #2 (from broken state) |
+| :--- | :--- | :--- |
+| Cold boot → BT ON, Wi-Fi ON | FAIL (both vanish) | PASS (both recover) |
+| Cold boot → BT ON, Wi-Fi OFF | FAIL (both vanish) | PASS (both recover) |
+| Cold boot → BT OFF, Wi-Fi ON | PASS | PASS |
+| Cold boot → BT OFF, Wi-Fi OFF | PASS | PASS |
 
-
-Key Takeaways from the Matrix
+### Key Takeaways from the Matrix
 
 1. Bluetooth's pre-reboot state is the decisive trigger: Whether Wi-Fi is ON or OFF before reboot does not prevent the failure if internal Bluetooth was active.
 2. A second warm reboot from a broken state always recovers: Because neither btusb nor rtw88_8723de successfully probed or loaded firmware during the failed boot, the chip sits unconfigured during the subsequent warm reboot and resets cleanly.
 
-4. Kernel Source Root-Cause Analysis
+---
 
+## 4. Kernel Source Root-Cause Analysis
 
-1. Missing .shutdown Handler in drivers/bluetooth/btusb.c
+### 1. Missing .shutdown Handler in drivers/bluetooth/btusb.c
 
-• In drivers/bluetooth/btrtl.c, Realtek defines btrtl_shutdown_realtek(struct hci_dev *hdev), which sends HCI_OP_RESET with the explicit vendor comment:c
-/* According to the vendor driver, BT must be reset on close to avoid
- * firmware crash.
- */
-Use code with caution.
-• However, btusb_driver (drivers/bluetooth/btusb.c) registers .disconnect = btusb_disconnect, but omits .shutdown.
-• During kernel_restart() → device_shutdown(), .disconnect is not called. When userspace (systemd) stops bluetooth.service moments before kernel device shutdown, btusb_close() leaves needs_remote_wakeup = 1 armed on the USB interface (BTUSB_WAKEUP_AUTOSUSPEND) while Realtek firmware remains resident in chip RAM.
+- In drivers/bluetooth/btrtl.c, Realtek defines btrtl_shutdown_realtek(struct hci_dev *hdev), which sends HCI_OP_RESET with the explicit vendor comment:
 
-2. Incomplete Shutdown Sequence in drivers/net/wireless/realtek/rtw88/pci.c
+  ```c
+  /* According to the vendor driver, BT must be reset on close to avoid
+   * firmware crash.
+   */
+  ```
 
-• rtw_pci_shutdown() invokes chip->ops->shutdown(rtwdev) (rtw8723d_shutdown(), which only sets BIT_USB_SUS_DIS in REG_HCI_OPT_CTRL) and immediately calls pci_set_power_state(pdev, PCI_D3hot) without calling rtw_power_off(rtwdev) or disabling PCI interrupts when RTW_FLAG_POWERON is still active.
+- However, btusb_driver (drivers/bluetooth/btusb.c) registers .disconnect = btusb_disconnect, but omits .shutdown.
+- During kernel_restart() → device_shutdown(), .disconnect is not called. When userspace (systemd) stops bluetooth.service moments before kernel device shutdown, btusb_close() leaves needs_remote_wakeup = 1 armed on the USB interface (BTUSB_WAKEUP_AUTOSUSPEND) while Realtek firmware remains resident in chip RAM.
 
-3. Critical Deadlocks & Edge Cases Discovered During Testing
+### 2. Incomplete Shutdown Sequence in drivers/net/wireless/realtek/rtw88/pci.c
 
-1. Never call btusb_disconnect() or usb_reset_device() inside usb_driver.shutdown():
-	• device_shutdown() already holds device_lock(&udev->dev). Calling hci_unregister_dev() (via btusb_disconnect) or usb_reset_device() inside .shutdown() deadlocks on the USB device mutex and triggers a kernel panic during reboot.
-2. Never wake an autosuspended Bluetooth controller if it was never opened during that boot:
-	• Calling usb_autopm_get_interface() unconditionally in btusb_shutdown() when Bluetooth was already toggled OFF in userspace wakes the suspended controller (RPM_ACTIVE), while __hci_cmd_sync() aborts with -ENETDOWN (!HCI_UP)—causing consecutive reboots with Bluetooth OFF to wedge on Reboot #2.
-	• Tracking BTUSB_NEEDS_SHUTDOWN_RESET in btusb_open() ensures btusb_shutdown() wakes and resets the controller only when Bluetooth was actually opened during that session, while always clearing needs_remote_wakeup = 0 and stopping active URBs.
+- rtw_pci_shutdown() invokes chip->ops->shutdown(rtwdev) (rtw8723d_shutdown(), which only sets BIT_USB_SUS_DIS in REG_HCI_OPT_CTRL) and immediately calls pci_set_power_state(pdev, PCI_D3hot) without calling rtw_power_off(rtwdev) or disabling PCI interrupts when RTW_FLAG_POWERON is still active.
 
-5. Final Verified Kernel Patch (v7.2.15)
+### 3. Critical Deadlocks & Edge Cases Discovered During Testing
 
-diff
+1. **Never call btusb_disconnect() or usb_reset_device() inside usb_driver.shutdown():**
+   - device_shutdown() already holds device_lock(&udev->dev). Calling hci_unregister_dev() (via btusb_disconnect) or usb_reset_device() inside .shutdown() deadlocks on the USB device mutex and triggers a kernel panic during reboot.
+
+2. **Never wake an autosuspended Bluetooth controller if it was never opened during that boot:**
+   - Calling usb_autopm_get_interface() unconditionally in btusb_shutdown() when Bluetooth was already toggled OFF in userspace wakes the suspended controller (RPM_ACTIVE), while __hci_cmd_sync() aborts with -ENETDOWN (!HCI_UP)—causing consecutive reboots with Bluetooth OFF to wedge on Reboot #2.
+   - Tracking BTUSB_NEEDS_SHUTDOWN_RESET in btusb_open() ensures btusb_shutdown() wakes and resets the controller only when Bluetooth was actually opened during that session, while always clearing needs_remote_wakeup = 0 and stopping active URBs.
+
+---
+
+## 5. Final Verified Kernel Patch (v7.2.15)
+
+```diff
 diff --git a/drivers/bluetooth/btusb.c b/drivers/bluetooth/btusb.c
 index bf9a93d..8dd07fe 100644
 --- a/drivers/bluetooth/btusb.c
@@ -188,40 +201,43 @@ index 69f2840..77e3524 100644
 +
  	if (chip->ops->shutdown)
  		chip->ops->shutdown(rtwdev);
-Use code with caution.
+```
 
-Post-Patch Verification Matrix
+### Post-Patch Verification Matrix
 
-• Cold boot → Wi-Fi ON + BT ON → Consecutive Warm Reboots: PASS
-• Cold boot → Wi-Fi OFF + BT ON → Consecutive Warm Reboots: PASS
-• Cold boot → Wi-Fi ON + BT OFF → Consecutive Warm Reboots (Run 1 & Run 2): PASS
-• Cold boot → Wi-Fi OFF + BT OFF → Consecutive Warm Reboots: PASS
+- Cold boot → Wi-Fi ON + BT ON → Consecutive Warm Reboots: PASS
+- Cold boot → Wi-Fi OFF + BT ON → Consecutive Warm Reboots: PASS
+- Cold boot → Wi-Fi ON + BT OFF → Consecutive Warm Reboots (Run 1 & Run 2): PASS
+- Cold boot → Wi-Fi OFF + BT OFF → Consecutive Warm Reboots: PASS
 
-6. Installation & Rollback
+---
 
+## 6. Installation & Rollback
 
-Prerequisites
+### Prerequisites
 
 See REQUIREMENTS.txt to install matching kernel headers and build tools (base-devel and linux-headers / linux-omarchy-headers).
 
-Install
+### Install
 
-bash
+```bash
 chmod +x install.sh
+unzip src.zip
 ./install.sh
-Use code with caution.
+```
+
 After installation completes, perform one full shutdown (power off completely) and power back on so the patched modules load cleanly.
 
-Verify Active Override
+### Verify Active Override
 
-bash
+```bash
 modinfo btusb rtw88_pci | grep -E "filename|srcversion"
-Use code with caution.
+```
+
 Both modules should resolve to /lib/modules/$(uname -r)/updates/.
 
-Rollback to Stock Kernel Modules
+### Rollback to Stock Kernel Modules
 
-bash
+```bash
 ./install.sh --uninstall
-Use code with caution.
-
+```
