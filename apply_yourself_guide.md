@@ -16,7 +16,7 @@ Clone only the two affected driver folders (`drivers/bluetooth` and `drivers/net
 
 ```bash
 KVER=$(uname -r | cut -d'-' -f1)
-REPO_URL="https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git"
+REPO_URL="https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux.git"
 
 git clone --depth 1 --filter=blob:none --sparse -b "v${KVER}" "${REPO_URL}" linux-rtw-fix
 cd linux-rtw-fix
@@ -106,8 +106,6 @@ If `git apply` fails because surrounding lines changed in a newer kernel, open t
   	if (chip->ops->shutdown)
   		chip->ops->shutdown(rtwdev);
 
-  	pci_clear_master(pdev);
-  	pci_disable_device(pdev);
   	pci_set_power_state(pdev, PCI_D3hot);
   }
   ```
