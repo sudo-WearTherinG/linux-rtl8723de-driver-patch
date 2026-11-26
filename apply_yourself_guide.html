@@ -256,8 +256,22 @@ kernel source code.
 </ol>
 </nav>
 
+<section id="download-source">
+<h2>Step 0: Download Your Running Kernel's Driver Source</h2>
+
+<p>
+Before editing the files below, download only the two affected driver folders matching your running kernel version:
+</p>
+
+<pre><code>KVER=$(uname -r | cut -d'-' -f1)
+git clone --depth 1 --filter=blob:none --sparse -b "v${KVER}" \
+  https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux.git linux-rtw-fix
+cd linux-rtw-fix
+git sparse-checkout set drivers/bluetooth drivers/net/wireless/realtek/rtw88</code></pre>
+</section>
+
 <section id="bt-flag">
-<h2>2. Add Bluetooth Shutdown Flag</h2>
+<h2>1. Add Bluetooth Shutdown Flag</h2>
 
 <div class="file">
 <strong>File:</strong>
@@ -294,7 +308,7 @@ current boot session.
 </section>
 
 <section id="bt-open">
-<h2>3. Modify btusb_open()</h2>
+<h2>2. Modify btusb_open()</h2>
 
 <div class="file">
 <strong>File:</strong>
@@ -335,7 +349,7 @@ should undergo the Bluetooth shutdown reset sequence.
 </section>
 
 <section id="bt-shutdown">
-<h2>4. Add btusb_shutdown()</h2>
+<h2>3. Add btusb_shutdown()</h2>
 
 <div class="file">
 <strong>File:</strong>
@@ -423,7 +437,7 @@ replacement location.
 </section>
 
 <section id="wifi-shutdown">
-<h2>5. Modify rtw_pci_shutdown()</h2>
+<h2>4. Modify rtw_pci_shutdown()</h2>
 
 <div class="file">
 <strong>File:</strong>
@@ -507,7 +521,7 @@ callback and PCI power-state transition.
 </section>
 
 <section id="verify">
-<h2>6. Verify the Modifications</h2>
+<h2>5. Verify the Modifications</h2>
 
 <p>
 After making all four changes, verify that the source files
@@ -545,7 +559,7 @@ kernel versions.
 </section>
 
 <section id="build">
-<h2>7. Build and Install</h2>
+<h2>6. Build and Install</h2>
 
 <p>
 From inside your modified kernel source directory (e.g., <code>linux-rtw-fix</code>), compile the two driver modules against your running kernel headers and copy them into <code>updates/</code>.
@@ -599,3 +613,4 @@ sudo depmod -a</code></pre>
 </main>
 </body>
 </html>
+
