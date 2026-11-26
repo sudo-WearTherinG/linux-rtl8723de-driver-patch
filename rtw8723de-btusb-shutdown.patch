@@ -1,0 +1,92 @@
+diff --git i/drivers/bluetooth/btusb.c w/drivers/bluetooth/btusb.c
+index bf9a93d..8dd07fe 100644
+--- i/drivers/bluetooth/btusb.c
++++ w/drivers/bluetooth/btusb.c
+@@ -990,6 +990,7 @@ struct qca_dump_info {
+ #define BTUSB_HW_SSR_ACTIVE	17
+ #define BTUSB_WAKEUP_BROKEN	18
+ #define BTUSB_RESET		19
++#define BTUSB_NEEDS_SHUTDOWN_RESET	20
+ 
+ struct btusb_data {
+ 	struct hci_dev       *hdev;
+@@ -2047,6 +2048,7 @@ static int btusb_open(struct hci_dev *hdev)
+ 	}
+ 
+ 	data->intf->needs_remote_wakeup = 1;
++	set_bit(BTUSB_NEEDS_SHUTDOWN_RESET, &data->flags);
+ 
+ 	if (test_and_set_bit(BTUSB_INTR_RUNNING, &data->flags))
+ 		goto done;
+@@ -4805,10 +4807,37 @@ static void btusb_coredump(struct device *dev)
+ }
+ #endif
+ 
++static void btusb_shutdown(struct usb_interface *intf)
++{
++	struct btusb_data *data = usb_get_intfdata(intf);
++	struct hci_dev *hdev;
++	int err = -1;
++
++	if (!data || intf != data->intf)
++		return;
++
++	hdev = data->hdev;
++	data->intf->needs_remote_wakeup = 0;
++	data->udev->do_remote_wakeup = 0;
++
++	if (test_and_clear_bit(BTUSB_NEEDS_SHUTDOWN_RESET, &data->flags) &&
++	    hdev->shutdown) {
++		err = usb_autopm_get_interface(data->intf);
++		hdev->shutdown(hdev);
++	}
++
++	btusb_stop_traffic(data);
++	usb_kill_anchored_urbs(&data->tx_anchor);
++
++	if (!err)
++		usb_autopm_put_interface(data->intf);
++}
++
+ static struct usb_driver btusb_driver = {
+ 	.name		= "btusb",
+ 	.probe		= btusb_probe,
+ 	.disconnect	= btusb_disconnect,
++	.shutdown	= btusb_shutdown,
+ 	.suspend	= pm_ptr(btusb_suspend),
+ 	.resume		= pm_ptr(btusb_resume),
+ 	.id_table	= btusb_table,
+diff --git i/drivers/net/wireless/realtek/rtw88/pci.c w/drivers/net/wireless/realtek/rtw88/pci.c
+index 69f2840..77e3524 100644
+--- i/drivers/net/wireless/realtek/rtw88/pci.c
++++ w/drivers/net/wireless/realtek/rtw88/pci.c
+@@ -1910,14 +1910,29 @@ void rtw_pci_shutdown(struct pci_dev *pdev)
+ {
+ 	struct ieee80211_hw *hw = pci_get_drvdata(pdev);
+ 	struct rtw_dev *rtwdev;
++	struct rtw_pci *rtwpci;
+ 	const struct rtw_chip_info *chip;
+ 
+ 	if (!hw)
+ 		return;
+ 
+ 	rtwdev = hw->priv;
++	rtwpci = (struct rtw_pci *)rtwdev->priv;
+ 	chip = rtwdev->chip;
+ 
++	mutex_lock(&rtwdev->mutex);
++	if (test_bit(RTW_FLAG_POWERON, rtwdev->flags)) {
++		clear_bit(RTW_FLAG_RUNNING, rtwdev->flags);
++		clear_bit(RTW_FLAG_FW_RUNNING, rtwdev->flags);
++		rtw_power_off(rtwdev);
++		clear_bit(RTW_FLAG_POWERON, rtwdev->flags);
++	}
++	else
++		rtw_hci_link_ps(rtwdev, false);
++	mutex_unlock(&rtwdev->mutex);
++
++	rtw_pci_disable_interrupt(rtwdev, rtwpci);
++
+ 	if (chip->ops->shutdown)
+ 		chip->ops->shutdown(rtwdev);
+ 
