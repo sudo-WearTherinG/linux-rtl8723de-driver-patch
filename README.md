@@ -1,5 +1,8 @@
 # Realtek RTL8723DE (`10ec:d723` / `0bda:b009`) Warm-Reboot Hang & Coexistence Analysis
 
+- **Interactive Web Guide:** https://sudo-WearTherinG.github.io/linux-rtl8723de-driver-patch/
+- **Manual Future-Kernel Guide:** `apply_yourself_guide.md`
+
 ## 1. Hardware & System Overview
 
 The **Realtek RTL8723DE** M.2 combo adapter integrates two distinct host bus interfaces onto a single silicon die sharing an internal power-management unit, coexistence scheduler, and a single (`1x1`) 2.4 GHz antenna:
