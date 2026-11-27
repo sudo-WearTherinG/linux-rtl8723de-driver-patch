@@ -9,7 +9,7 @@ The **Realtek RTL8723DE** M.2 combo adapter integrates two distinct host bus int
 
 | Function | Bus Interface | PCI / USB ID | Linux Kernel Driver |
 | :--- | :--- | :--- | :--- |
-| **Wi-Fi (802.11b/g/n)** | PCIe | `10ec:d723` | `rtw88_8723de` (`rtw88_core / rtw88_pci`) |
+| **Wi-Fi (802.11b/g/n)** | PCIe | `10ec:d723` | `rtw88_8723de` (`rtw88_core rtw88_pci`) |
 | **Bluetooth (4.2)** | USB | `0bda:b009` | `btusb` + `btrtl` |
 
 - **Tested Platform:** HP Laptop (`15-da0xxx`), Arch-based Omarchy Linux (`7.2.15-4-omarchy`)
@@ -234,7 +234,7 @@ After installation completes, perform one full shutdown (power off completely) a
 ### Verify Active Override
 
 ```bash
-modinfo btusb rtw88_core / rtw88_pci | grep -E "filename|srcversion"
+modinfo btusb rtw88_core rtw88_pci | grep -E "filename|srcversion"
 ```
 
 Both modules should resolve to /lib/modules/$(uname -r)/updates/.
