@@ -237,7 +237,7 @@ After installation completes, perform one full shutdown (power off completely) a
 modinfo btusb rtw88_core rtw88_pci | grep -E "filename|srcversion"
 ```
 
-Both modules should resolve to /lib/modules/$(uname -r)/updates/.
+All three modules should resolve to /lib/modules/$(uname -r)/updates/.
 
 ### Rollback to Stock Kernel Modules
 
