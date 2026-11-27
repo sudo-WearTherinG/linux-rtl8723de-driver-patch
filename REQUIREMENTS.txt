@@ -1,0 +1,17 @@
+Before running ./install.sh, install your kernel headers and build tools:
+
+Arch Linux:
+  sudo pacman -S --needed base-devel linux-headers
+
+Omarchy:
+  sudo pacman -S --needed base-devel linux-omarchy-headers
+
+Ubuntu / Debian:
+  sudo apt update && sudo apt install -y build-essential linux-headers-$(uname -r)
+
+Fedora:
+  sudo dnf install -y kernel-devel-$(uname -r) gcc make
+
+
+NOTE: Tested only on Omarchy.
+Note: On Ubuntu/Debian with Secure Boot enabled, disable Secure Boot or sign the modules. (UN-tested outside Omarchy)
