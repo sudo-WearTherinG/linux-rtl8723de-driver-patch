@@ -1,0 +1,106 @@
+diff -Naur orig/src/drivers/bluetooth/btusb.c patched/src/drivers/bluetooth/btusb.c
+--- a/drivers/bluetooth/btusb.c	2026-11-27 05:11:46.654099078 +0530
++++ b/drivers/bluetooth/btusb.c	2026-11-27 05:10:40.000000000 +0530
+@@ -990,6 +990,7 @@
+ #define BTUSB_HW_SSR_ACTIVE	17
+ #define BTUSB_WAKEUP_BROKEN	18
+ #define BTUSB_RESET		19
++#define BTUSB_NEEDS_SHUTDOWN_RESET	20
+ 
+ struct btusb_data {
+ 	struct hci_dev       *hdev;
+@@ -2047,6 +2048,7 @@
+ 	}
+ 
+ 	data->intf->needs_remote_wakeup = 1;
++	set_bit(BTUSB_NEEDS_SHUTDOWN_RESET, &data->flags);
+ 
+ 	if (test_and_set_bit(BTUSB_INTR_RUNNING, &data->flags))
+ 		goto done;
+@@ -4435,8 +4437,13 @@
+ 		hdev->reset = btusb_rtl_reset;
+ 		hdev->hw_error = btusb_rtl_hw_error;
+ 
+-		/* Realtek devices need to set remote wakeup on auto-suspend */
+-		set_bit(BTUSB_WAKEUP_AUTOSUSPEND, &data->flags);
++		if (le16_to_cpu(data->udev->descriptor.idVendor) == 0x0bda &&
++		    le16_to_cpu(data->udev->descriptor.idProduct) == 0xb009) {
++			enable_autosuspend = false;
++		} else {
++			/* Realtek devices need to set remote wakeup on auto-suspend */
++			set_bit(BTUSB_WAKEUP_AUTOSUSPEND, &data->flags);
++		}
+ 		set_bit(BTUSB_USE_ALT3_FOR_WBS, &data->flags);
+ 	}
+ 
+@@ -4805,10 +4812,37 @@
+ }
+ #endif
+ 
++static void btusb_shutdown(struct usb_interface *intf)
++{
++	struct btusb_data *data = usb_get_intfdata(intf);
++	struct hci_dev *hdev;
++	int err = -1;
++
++	if (!data || intf != data->intf)
++		return;
++
++	hdev = data->hdev;
++	data->intf->needs_remote_wakeup = 0;
++	data->udev->do_remote_wakeup = 0;
++
++	if (test_and_clear_bit(BTUSB_NEEDS_SHUTDOWN_RESET, &data->flags) &&
++	    hdev->shutdown) {
++		err = usb_autopm_get_interface(data->intf);
++		hdev->shutdown(hdev);
++	}
++
++	btusb_stop_traffic(data);
++	usb_kill_anchored_urbs(&data->tx_anchor);
++
++	if (!err)
++		usb_autopm_put_interface(data->intf);
++}
++
+ static struct usb_driver btusb_driver = {
+ 	.name		= "btusb",
+ 	.probe		= btusb_probe,
+ 	.disconnect	= btusb_disconnect,
++	.shutdown	= btusb_shutdown,
+ 	.suspend	= pm_ptr(btusb_suspend),
+ 	.resume		= pm_ptr(btusb_resume),
+ 	.id_table	= btusb_table,
+diff -Naur orig/src/drivers/net/wireless/realtek/rtw88/pci.c patched/src/drivers/net/wireless/realtek/rtw88/pci.c
+--- a/drivers/net/wireless/realtek/rtw88/pci.c	2026-11-27 05:11:46.655310470 +0530
++++ b/drivers/net/wireless/realtek/rtw88/pci.c	2026-11-26 19:34:03.000000000 +0530
+@@ -1910,14 +1910,29 @@
+ {
+ 	struct ieee80211_hw *hw = pci_get_drvdata(pdev);
+ 	struct rtw_dev *rtwdev;
++	struct rtw_pci *rtwpci;
+ 	const struct rtw_chip_info *chip;
+ 
+ 	if (!hw)
+ 		return;
+ 
+ 	rtwdev = hw->priv;
++	rtwpci = (struct rtw_pci *)rtwdev->priv;
+ 	chip = rtwdev->chip;
+ 
++	mutex_lock(&rtwdev->mutex);
++	if (test_bit(RTW_FLAG_POWERON, rtwdev->flags)) {
++		clear_bit(RTW_FLAG_RUNNING, rtwdev->flags);
++		clear_bit(RTW_FLAG_FW_RUNNING, rtwdev->flags);
++		rtw_power_off(rtwdev);
++		clear_bit(RTW_FLAG_POWERON, rtwdev->flags);
++	}
++	else
++		rtw_hci_link_ps(rtwdev, false);
++	mutex_unlock(&rtwdev->mutex);
++
++	rtw_pci_disable_interrupt(rtwdev, rtwpci);
++
+ 	if (chip->ops->shutdown)
+ 		chip->ops->shutdown(rtwdev);
+ 
